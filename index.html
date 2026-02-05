@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body>
+    <header>
+        <h1>Consuming API data with Fetch and Axios</h1>
+    </header>
+    <main>
+        <label for="useAxios">Use Axios</label>
+        <input type="radio" name="apiSelector" value="axios">
+        <label for="useFetch">Use Fetch</label>
+        <input type="radio" name="apiSelector" value="fetch">
+        <input type="search" placeholder="Search element" id="searchInput">
+        <button id="fetchButton">Get Data</button>
+
+        <div id="loadingElement" class="hidden"></div>
+        <div id="errorElement" class="hidden"></div>
+        <div id="resultsContainer"></div>
+        <nav id="paginationContainer"></nav>
+    </main>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
