@@ -13,9 +13,9 @@ const paginationContainer = document.getElementById('paginationContainer')
 
 
 fetchButton.addEventListener('click', () => {
+    currentPage = 1;
     fetchData()
 })
-
 
 // Funció per mostrar l'indicador de càrrega
 function showLoading() {
@@ -29,12 +29,13 @@ function hideLoading() {
 
 // Funció per mostrar missatges d'error
 function showError(message) {
-    errorElement.innerHTML = message
+    errorElement.textContent = message
     errorElement.classList.remove('hidden')
 }
 
 // Funció per amagar missatges d'error
 function hideError() {
+    errorElement.textContent = ''
     errorElement.classList.add('hidden')
 }
 
@@ -49,23 +50,15 @@ async function fetchData() {
     paginationContainer.innerHTML = '';
 
     try {
-        let response
 
         if (useAxios) {
-            // ... (Crida la funció per obtenir dades amb Axios)
+            await fetchDataWithAxios(searchTerm)
         } else {
-            response = await fetchDataWithFetch(searchTerm);
-            
+            await fetchDataWithFetch(searchTerm);
         }
 
-
-
     } catch (error) {
-        console.log(error)
-        // ... (Gestiona errors inesperats si s'escapen de les funcions específiques de Fetch/Axios)
-        //  if (response.status === 404) throw new Error('404, Not found');
-        //  if (response.status === 500) throw new Error('500, internal server error');
-            
+        showError(error.message)
 
     } finally {
         hideLoading();
@@ -76,10 +69,18 @@ async function fetchData() {
 function displayResults(items, totalItems) {
     let output = ``;
     items.forEach(item => {
-        output += `${item.title}<br>${item.body}<br><br><br>`
+        output += `<div class="text-start border rounded-sm p-2">
+                <div class="">
+                    <h4 class="font-semibold mb-1">${item.id}. ${item.title}</h4>
+                    <hr class="mb-2">
+                    <p class="card-text">${item.body}</p>
+                </div>
+            </div>`
         
     });
     resultsContainer.innerHTML = output
+
+    setupPagination(totalItems)
 }
 
 function setupPagination(totalItems) {
@@ -91,12 +92,29 @@ function setupPagination(totalItems) {
 
         for (let index = 1; index <= totalPages; index++) {
 
-            const activeAttr = index === currentPage ? ' aria-current="page"' : '';
-            output += `<button data-page="${index}" ${activeAttr}>${index}</button>`
+            let activeAttr = '';
+            let buttonClass = 'pageButton font-medium leading-5 text-sm px-3 py-2';
+
+            if (index === currentPage) {
+                buttonClass += ' bg-gray-300';
+                activeAttr = ' aria-current="page" disabled';
+            } else {
+                buttonClass += ' hover:bg-gray-200 focus:ring-1 focus:ring-gray-300';
+            }
+
+            output += `<button data-page="${index}" class="${buttonClass}"${activeAttr}>${index}</button>`
             
         }
 
         paginationContainer.innerHTML = output
+
+        const pageButtons = document.querySelectorAll('.pageButton')
+        pageButtons.forEach(btn =>
+            btn.addEventListener('click', (e) => {
+                currentPage = Number(e.currentTarget.dataset.page)
+                fetchData()
+            })
+        )
     }
 
 }
@@ -109,34 +127,63 @@ async function fetchDataWithFetch(searchTerm) {
     try {
         const response = await fetch(url);
 
-        if (response.ok) {
+        if (!response.ok) {
+            throw new Error(fetcherrors(response.status));
+        }
+
+        if (response.ok && response.status === 200) {
             const totalItemsHeader = response.headers.get('x-total-count');
             const totalItems = totalItemsHeader ? Number(totalItemsHeader) : null;
             const items = await response.json();
 
-            if (!totalItems) return {oK: 'false', error: 'No items'}
+            if (!totalItems) throw new Error(fetcherrors('no_items'));
 
             displayResults(items, totalItems)
-            setupPagination(totalItems)
-            
+        } 
 
-        } else {
-            
-           
-        }
-
-        
-        
     } catch (error) {
-        console.error('Fetch', error);
-
+        throw error;
     }
-
 
 }
 
 // Funció per obtenir dades amb Axios (a implementar)
                                                                                     
 async function fetchDataWithAxios(searchTerm) {
-    // ... (Implementa la petició amb Axios)
+    try {
+        const response = await axios.get(API_URL,{
+            params: {
+                _page: currentPage,
+                _limit: itemsPerPage,
+                q: searchTerm
+            }
+        });
+
+        if (response.status === 200) {
+            const totalItems = response.headers['x-total-count'] ? Number(response.headers['x-total-count']) : null;
+            const items = response.data;
+
+            if (!totalItems) throw new Error(fetcherrors('no_items'));
+
+            displayResults(items, totalItems)
+        }
+
+    } catch (error) {
+        throw error;
+    }
+}
+
+function fetcherrors(errorCode) {
+    switch (errorCode) {
+        case 404:
+            return 'Not found'
+        case 500:
+            return 'Internal Server Error'
+        case 'response_ko':
+            return 'There was no response from the server'
+        case 'no_items':
+            return 'We could not find any items'
+        default:
+            return 'There was an error'
+    }
 }
