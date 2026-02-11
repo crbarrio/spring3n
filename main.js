@@ -3,6 +3,8 @@
 const API_URL = 'https://jsonplaceholder.typicode.com/posts';
 let currentPage = 1;
 const itemsPerPage = 10;
+const cache = new Map(); 
+const CACHE_DURATION = 5 * 60 * 1000; 
 
 const searchInput = document.getElementById('searchInput')
 const fetchButton = document.getElementById('fetchButton')
@@ -41,8 +43,10 @@ function hideError() {
 
 // Funció principal per obtenir dades (a implementar)
 async function fetchData() {
-    const searchTerm = searchInput.value.trim();
+
     const useAxios = document.querySelector('input[name="apiSelector"]:checked')?.value === 'axios';
+    const searchTerm = searchInput.value.trim();
+    const url = API_URL + `?_page=${currentPage}&_limit=${itemsPerPage}&q=${searchTerm}`
     
     showLoading();
     hideError();
@@ -52,9 +56,11 @@ async function fetchData() {
     try {
 
         if (useAxios) {
-            await fetchDataWithAxios(searchTerm)
+            const response = await fetchDataWithAxios(url);
+            displayResults(response.items, response.totalItems)
         } else {
-            await fetchDataWithFetch(searchTerm);
+            const response = await fetchDataWithFetch(url);
+            displayResults(response.items, response.totalItems)
         }
 
     } catch (error) {
@@ -120,28 +126,61 @@ function setupPagination(totalItems) {
 }
 
 // Funció per obtenir dades amb Fetch (a implementar)
-async function fetchDataWithFetch(searchTerm) {
+async function fetchDataWithFetch(url) {
 
-    const url = API_URL + `?_page=${currentPage}&_limit=${itemsPerPage}&q=${searchTerm}`
+    const cached = cache.get(url);
 
-    try {
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw new Error(fetcherrors(response.status));
+    if (cached) {      
+        const isExpired = Date.now() - cached.timestamp > CACHE_DURATION;  
+            
+        if (!isExpired) {       
+            console.log("Reutilizando cache/promise");       
+            return cached.promise;     
         }
+        
+        cached.controller?.abort();
+        
+        cache.delete(url);   
+    }
 
-        if (response.ok && response.status === 200) {
+    console.log("Nuevo fetch");
+
+    const controller = new AbortController();
+
+    const promise = fetch(url, { signal: controller.signal })
+        .then(async response => {   
+
+            if (!response.ok) {         
+                throw new Error("HTTP error");       
+            }
+            
             const totalItemsHeader = response.headers.get('x-total-count');
             const totalItems = totalItemsHeader ? Number(totalItemsHeader) : null;
             const items = await response.json();
 
-            if (!totalItems) throw new Error(fetcherrors('no_items'));
+            if (!totalItems) {
+                throw new Error(fetcherrors('no_items'));
+            }
 
-            displayResults(items, totalItems)
-        } 
+            return { items, totalItems };    
+        }
+    ); 
+
+    cache.set(url, {     
+        promise,
+        controller,
+        timestamp: Date.now()   
+    });
+
+    try {
+        return await promise;
 
     } catch (error) {
+
+        if (error.name !== "AbortError") {
+            cache.delete(url);
+        }
+
         throw error;
     }
 
@@ -149,26 +188,53 @@ async function fetchDataWithFetch(searchTerm) {
 
 // Funció per obtenir dades amb Axios (a implementar)
                                                                                     
-async function fetchDataWithAxios(searchTerm) {
-    try {
-        const response = await axios.get(API_URL,{
-            params: {
-                _page: currentPage,
-                _limit: itemsPerPage,
-                q: searchTerm
-            }
-        });
+async function fetchDataWithAxios(url) {
 
-        if (response.status === 200) {
+    const cached = cache.get(url);
+
+    if (cached) {      
+        const isExpired = Date.now() - cached.timestamp > CACHE_DURATION;  
+            
+        if (!isExpired) {       
+            console.log("Reutilizando cache/promise");       
+            return cached.promise;     
+        }      
+
+        cached.controller?.abort();
+        
+        cache.delete(url);   
+    }
+
+    console.log("Nuevo fetch");
+    const controller = new AbortController();
+
+    const promise = axios.get(url, { signal: controller.signal })
+        .then(async response => {   
+
             const totalItems = response.headers['x-total-count'] ? Number(response.headers['x-total-count']) : null;
             const items = response.data;
 
             if (!totalItems) throw new Error(fetcherrors('no_items'));
-
-            displayResults(items, totalItems)
+            return {items, totalItems}
+            
         }
+    ); 
+
+    cache.set(url, {     
+        promise,
+        controller,
+        timestamp: Date.now()   
+    });
+
+    try {
+        return await promise;
 
     } catch (error) {
+
+        if (!axios.isCancel?.(error)) {
+            cache.delete(url);
+        }
+        
         throw error;
     }
 }
