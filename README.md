@@ -1,4 +1,4 @@
-# spring3n
+# Consumo de datos de APIs con Fetch y Axios
 
 Pequeña app frontend (HTML + JavaScript con módulos ES) para consumir datos de una API y mostrarlos con búsqueda y paginación.
 
