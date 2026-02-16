@@ -79,29 +79,40 @@ export async function fetchData() {
     paginationContainer.innerHTML = '';
 
     try {
+        let requestFn;
+        let requestUrl = url;
 
-        if (mode === 'axios') {
+        switch (mode) {
+            case 'axios':
+                requestFn = fetchDataWithAxios;
+                break;
 
-            const response = await fetchDataWithAxios(url);
-            if (!response.totalItems) throw new Error(fetcherrors('no_items'));
-            displayResults(response.items, response.totalItems, mode)
+            case 'fetch':
+                requestFn = fetchDataWithFetch;
+                break;
 
-        } else if (mode === 'fetch') {
+            case 'custom':
+                if (!searchTerm) throw new Error('Please enter a valid API URL');
+                requestFn = fetchDataWithAxios;
+                requestUrl = searchTerm;
+                break;
 
-            const response = await fetchDataWithFetch(url);
-            if (!response.totalItems) throw new Error(fetcherrors('no_items'));
-            displayResults(response.items, response.totalItems, mode)
-
-        } else if (mode === 'custom') {
-
-            if (!searchTerm) throw new Error('Please enter a valid API URL')   
-            const response = await fetchDataWithAxios(searchTerm);
-            if (!response.items) throw new Error(fetcherrors('no_items'));
-            displayResults(response.items, response.items.length, mode)
-
-        } else {
-            throw new Error('Please select an API mode')
+            default:
+                throw new Error('Please select an API mode');
         }
+
+        const response = await requestFn(requestUrl);
+
+        const items = response?.items ?? [];
+        const totalItems = Number.isFinite(response?.totalItems)
+            ? response.totalItems
+            : items.length;
+
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new Error(fetcherrors('no_items'));
+        }
+
+        displayResults(items, totalItems, mode);
 
     } catch (error) {
         showError(error.message)
