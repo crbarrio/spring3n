@@ -6,116 +6,64 @@ import {
     searchInput, 
     resultsContainer, 
     paginationContainer, 
-    displayResults, 
-    displayGeneralResults, 
+    displayResults,
     itemsPerPage, 
     currentPage 
 } from "./ui.js";
 
 const API_URL = 'https://jsonplaceholder.typicode.com/posts';
 const cache = new Map(); 
-const CACHE_DURATION = 5 * 60 * 1000; 
+const CACHE_DURATION = 5 * 60 * 1000;
 
-// Funció per obtenir dades amb Fetch (a implementar)
-async function fetchDataWithFetch(url) {
+async function cached(url, doRequest) {
+    const cachedEntry = cache.get(url);
 
-    const cached = cache.get(url);
+    if (cachedEntry) {
+        const expired = Date.now() - cachedEntry.timestamp > CACHE_DURATION;
+        if (!expired) return cachedEntry.promise;
 
-    if (cached) {      
-        const isExpired = Date.now() - cached.timestamp > CACHE_DURATION;  
-            
-        if (!isExpired) {           
-            return cached.promise;     
-        }
-        
-        cached.controller?.abort();
-        
-        cache.delete(url);   
+        cachedEntry.controller?.abort();
+        cache.delete(url);
     }
 
     const controller = new AbortController();
+    const promise = doRequest(controller.signal);
 
-    const promise = fetch(url, { signal: controller.signal })
-        .then(async response => {   
-
-            if (!response.ok) {         
-                throw new Error("HTTP error");       
-            }
-            
-            const totalItemsHeader = response.headers.get('x-total-count');
-            const totalItems = totalItemsHeader ? Number(totalItemsHeader) : null;
-            const items = await response.json();
-
-            return { items, totalItems };    
-        }
-    ); 
-
-    cache.set(url, {     
-        promise,
-        controller,
-        timestamp: Date.now()   
-    });
+    cache.set(url, { promise, controller, timestamp: Date.now() });
 
     try {
         return await promise;
-
     } catch (error) {
-
-        if (error.name !== "AbortError") {
-            cache.delete(url);
-        }
-
+        if (!isCanceled(error)) cache.delete(url);
         throw error;
     }
+}
 
+// Funció per obtenir dades amb Fetch (a implementar)
+async function fetchDataWithFetch(url) {
+    return cached(url, async (signal) => {
+        const response = await fetch(url, { signal });
+        if (!response.ok) throw new Error("HTTP error");
+
+        const totalItemsHeader = response.headers.get("x-total-count");
+        const totalItems = totalItemsHeader ? Number(totalItemsHeader) : null;
+        const items = await response.json();
+
+        return { items, totalItems };
+    });
 }
 
 // Funció per obtenir dades amb Axios (a implementar)
                                                                                     
 async function fetchDataWithAxios(url) {
+    return cached(url, async (signal) => {
+        const response = await axios.get(url, { signal });
+        const totalItems = response.headers?.["x-total-count"]
+            ? Number(response.headers["x-total-count"])
+            : null;
 
-    const cached = cache.get(url);
-
-    if (cached) {      
-        const isExpired = Date.now() - cached.timestamp > CACHE_DURATION;  
-            
-        if (!isExpired) {          
-            return cached.promise;     
-        }      
-
-        cached.controller?.abort();
-        
-        cache.delete(url);   
-    }
-
-    const controller = new AbortController();
-
-    const promise = axios.get(url, { signal: controller.signal })
-        .then(async response => {   
-            const totalItems = response.headers['x-total-count'] ? Number(response.headers['x-total-count']) : null;
-            const items = response.data;
-
-            return {items, totalItems}
-        }
-    ); 
-
-    cache.set(url, {     
-        promise,
-        controller,
-        timestamp: Date.now()   
+        return { items: response.data, totalItems };
     });
-
-    try {
-        return await promise;
-
-    } catch (error) {
-
-        if (!axios.isCancel?.(error)) {
-            cache.delete(url);
-        }
-
-        throw error;
-    }
 }
 
 
@@ -136,23 +84,20 @@ export async function fetchData() {
 
             const response = await fetchDataWithAxios(url);
             if (!response.totalItems) throw new Error(fetcherrors('no_items'));
-            displayResults(response.items, response.totalItems)
+            displayResults(response.items, response.totalItems, mode)
 
         } else if (mode === 'fetch') {
 
             const response = await fetchDataWithFetch(url);
             if (!response.totalItems) throw new Error(fetcherrors('no_items'));
-            displayResults(response.items, response.totalItems)
+            displayResults(response.items, response.totalItems, mode)
 
         } else if (mode === 'custom') {
 
-            if (!searchTerm) {
-                throw new Error('Please enter a valid API URL')
-                
-            } else {
-                const response = await fetchDataWithAxios(searchTerm);
-                displayGeneralResults(response.items)
-            }
+            if (!searchTerm) throw new Error('Please enter a valid API URL')   
+            const response = await fetchDataWithAxios(searchTerm);
+            if (!response.items) throw new Error(fetcherrors('no_items'));
+            displayResults(response.items, response.items.length, mode)
 
         } else {
             throw new Error('Please select an API mode')
